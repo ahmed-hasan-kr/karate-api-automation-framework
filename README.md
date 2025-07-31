@@ -1,5 +1,4 @@
-# karate-api-automation-framework
-# Run with environment in IDE
+# karate-api-automation-framework => Run with environment in IDE
 ## In Run/Debug Configurations or Edit Configuration --> VM Options :
 add your respective environment
 ```java

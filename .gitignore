@@ -2,7 +2,14 @@
 *.class
 
 # Log file
+target/
+*.iml
+.idea/
+.settings/
+.project
+.classpath
 *.log
+test
 
 # BlueJ files
 *.ctxt

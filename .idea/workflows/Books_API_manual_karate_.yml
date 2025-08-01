@@ -1,0 +1,122 @@
+# This workflow will run automation tests for the Books API when triggered manually
+
+name: QA - Karate Automation - Books API - Manual
+
+on:
+  workflow_dispatch:
+    paths:
+      - 'books-api-karate/**'
+    inputs:
+      env:
+        description: 'Environment to run the tests (test/stage/prod)'
+        type: choice
+        options:
+          - 'test'
+          - 'stage'
+          - 'prod'
+        required: true
+        default: 'test'
+      groups:
+        description: 'Test groups to execute'
+        type: choice
+        options:
+          - 'smoke'
+          - 'regression'
+          - 'performance'
+        required: true
+        default: 'smoke'
+
+env:
+  BOOKS_API_USERNAME: ${{ secrets.BOOKS_API_USERNAME }}
+  BOOKS_API_PASSWORD: ${{ secrets.BOOKS_API_PASSWORD }}
+
+defaults:
+  run:
+    working-directory: ./books-api-karate
+
+jobs:
+  run_karate_tests:
+    name: "Run Karate Tests | Env: ${{ github.event.inputs.env }} | Group: ${{ github.event.inputs.groups }}"
+    runs-on: ubuntu-latest
+
+    container: maven:3.8.5-openjdk-11
+
+    steps:
+      # Step 1: Check out the code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      # Step 2: Set up Java
+      - name: Setup JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: '11'
+          distribution: temurin
+
+      # Step 3: Cache Maven dependencies
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # Step 4: Get current date and time for reporting
+      - name: Get current date and time
+        uses: josStorer/get-current-time@v2
+        id: date
+        with:
+          format: "MM-DD-YYYY HH-mm-ss"
+
+      - name: Get pretty date
+        uses: josStorer/get-current-time@v2
+        id: pretty_date
+        with:
+          format: "MMM DD, YYYY [at] hh:mm A"
+
+      # Step 5: Run Karate API Tests
+      - name: Run Karate API Tests
+        run: |
+          mvn clean test --settings settings.xml -Dkarate.env=${{ github.event.inputs.env }} \
+            "-Dkarate.options=--tags @${{ github.event.inputs.groups }}" \
+            "-Dapi.username=${{ secrets.BOOKS_API_USERNAME }}" \
+            "-Dapi.password=${{ secrets.BOOKS_API_PASSWORD }}" \
+            "-Drp.description=Manually Triggered Workflow Execution" \
+            "-Drp.attributes=Run Date & Time:${{ steps.date.outputs.formattedTime }};Environment:${{ github.event.inputs.env }};Test Suite:${{ github.event.inputs.groups }}" \
+            "-Drp.enable=true"
+
+      # Step 6: Publish Test Report
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v3
+        if: success() || failure() # always run even if the previous step fails
+        with:
+          check_name: Karate JUnit Test Report
+          report_paths: "./books-api-karate/target/karate-reports/*.xml"
+
+      # Step 7: Karate Test Result Report
+      - name: Karate Test Result Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Karate Test Result
+          path: "./books-api-karate/target/karate-reports/*.xml"
+          reporter: java-junit
+
+      # Step 8: Upload artifacts (HTML reports)
+      - name: Upload Karate Cucumber Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Karate Cucumber Reports
+          path: ./books-api-karate/target/cucumber-html-reports
+
+      # Step 9: Upload results to external reporting tool (optional)
+      - name: Upload results to external reporting tool
+        if: always()
+        run: |
+          mvn exec:java --settings settings.xml \
+            -DsuiteName="Books API - Manually Triggered Run | Env: ${{ github.event.inputs.env }} | Test Suite: ${{ github.event.inputs.groups }} | Run Date & Time: ${{ steps.pretty_date.outputs.formattedTime }}"
